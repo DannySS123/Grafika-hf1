@@ -62,6 +62,14 @@ const char * const fragmentSource = R"(
 GPUProgram gpuProgram; // vertex and fragment shaders
 unsigned int vao;	   // virtual world on the GPU
 
+//CONSTANTS
+const int nv = 100;
+double k = 8.988 * (10 ^ 9); //Coulomb number
+double hidrogenWeigth = 1.00797; // g/Mol
+double electronCharge = -1.602176634; //* 10 ^ (-19)coulomb
+
+float moved = 0.1;
+
 // Initialization, create an OpenGL context
 void onInitialization() {
 	glViewport(0, 0, windowWidth, windowHeight);
@@ -73,9 +81,13 @@ void onInitialization() {
 	glGenBuffers(1, &vbo);	// Generate 1 buffer
 	glBindBuffer(GL_ARRAY_BUFFER, vbo);
 	// Geometry with 24 bytes (6 floats or 3 x 2 coordinates)
-	float vertices[] = { -0.8f, -0.8f, -0.6f, 1.0f, 0.8f, -0.2f };
+	vec2 vertices[nv];
+	for (int i = 0; i < nv; i++) {
+		float fi = i * 2 * M_PI / nv;
+		vertices[i] = vec2(cos(fi), sin(fi));
+	}
 	glBufferData(GL_ARRAY_BUFFER, 	// Copy to GPU target
-		sizeof(vertices),  // # bytes
+		sizeof(vec2) * nv,  // # bytes
 		vertices,	      	// address
 		GL_STATIC_DRAW);	// we do not change later
 
@@ -93,27 +105,72 @@ void onDisplay() {
 	glClearColor(0, 0, 0, 0);     // background color
 	glClear(GL_COLOR_BUFFER_BIT); // clear frame buffer
 
-	// Set color to (0, 1, 0) = green
-	int location = glGetUniformLocation(gpuProgram.getId(), "color");
-	glUniform3f(location, 0.0f, 1.0f, 0.0f); // 3 floats
+	int numberOfMolecules = 2;
+	for (int i = 0; i < numberOfMolecules; ++i) {
+		double chargeSum = 0;
 
-	float MVPtransf[4][4] = { 1, 0, 0, 0,    // MVP matrix, 
-							  0, 1, 0, 0,    // row-major!
-							  0, 0, 1, 0,
-							  0, 0, 0, 1 };
+		float rx = (rand() % 30) / 15.0 - 1;
+		float ry = (rand() % 30) / 15.0 - 1;
+		//printf("%f\n", rx);
+		int numberOfAtoms = rand() % 7 + 2; //between 2 and 8
+		for (int j = 0; j < numberOfAtoms; ++j) {
 
-	location = glGetUniformLocation(gpuProgram.getId(), "MVP");	// Get the GPU location of uniform variable MVP
-	glUniformMatrix4fv(location, 1, GL_TRUE, &MVPtransf[0][0]);	// Load a 4x4 row-major float matrix to the specified location
+			double mult = 0, charge = 0;
+			if (j + 1 != numberOfAtoms) {
+				mult = ((rand() % 10) + 1); //between 1 and 10
+				if ((rand() % 2) == 0) {
+					mult *= -1;
+				}
+				charge = electronCharge * mult;
+			}
+			else {
+				charge = -chargeSum;
+			}
+			chargeSum += charge;
+			
+			// Set color to (0, 1, 0) = green
+			int location = glGetUniformLocation(gpuProgram.getId(), "color");
+			glUniform3f(location,(mult < 0) ? (-mult/10) : 0, 0, (mult > 0) ? (mult / 10) : 0); // 3 floats
 
-	glBindVertexArray(vao);  // Draw call
-	glDrawArrays(GL_TRIANGLES, 0 /*startIdx*/, 3 /*# Elements*/);
+			float MVPtransf[4][4] = { 0.1, 0, 0, 0,    // MVP matrix, 
+									  0, 0.1, 0, 0,    // row-major!
+									  0, 0, 1, 0,
+									  rx+j*0.2, ry, 0, 1 };
+
+			location = glGetUniformLocation(gpuProgram.getId(), "MVP");	// Get the GPU location of uniform variable MVP
+			glUniformMatrix4fv(location, 1, GL_TRUE, &MVPtransf[0][0]);	// Load a 4x4 row-major float matrix to the specified location
+
+			glBindVertexArray(vao);  // Draw call
+			glDrawArrays(GL_TRIANGLE_FAN, 0 /*startIdx*/, nv /*# Elements*/);
+		}
+		if (chargeSum != 0) {
+			printf("ajajj");
+		}
+	}
 
 	glutSwapBuffers(); // exchange buffers for double buffering
 }
 
+
 // Key of ASCII code pressed
 void onKeyboard(unsigned char key, int pX, int pY) {
-	if (key == 'd') glutPostRedisplay();         // if d, invalidate display, i.e. redraw
+	switch (key) {
+		case 27: //esc
+			exit(0);
+			break;
+		case 32: //space
+			glutPostRedisplay();
+			break;
+		case 83: //s
+			moved += 0.1;
+			break;
+		case 68: //d
+			break;
+		case 88: //x
+			break;
+		case 69: //e
+			break;
+	}
 }
 
 // Key of ASCII code released
@@ -150,4 +207,10 @@ void onMouse(int button, int state, int pX, int pY) { // pX, pY are the pixel co
 // Idle event indicating that some time elapsed: do animation here
 void onIdle() {
 	long time = glutGet(GLUT_ELAPSED_TIME); // elapsed time since the start of the program
+}
+
+
+
+float columbForce(int q1, int q2, float r) {
+	return k * q1 * q2 / r / r;
 }
