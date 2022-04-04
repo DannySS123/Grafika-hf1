@@ -59,6 +59,23 @@ const char * const fragmentSource = R"(
 	}
 )";
 
+class Camera2D {
+	vec2 wCenter;	//center in world coordinates
+	vec2 wSize;		//width and height in world coordinates
+public:
+	Camera2D() : wCenter(0, 0), wSize(600, 600) {}
+
+	mat4 V() { return TranslateMatrix(-wCenter); }
+	mat4 P() { return ScaleMatrix(vec2(2 / wSize.x, 2 / wSize.y)); }
+
+	mat4 Vinv() { return TranslateMatrix(wCenter); }
+	mat4 Pinv() { return ScaleMatrix(vec2(wSize.x / 2, wSize.y / 2)); }
+
+	void Zoom(float s) { wSize = wSize * s; }
+	void Pan(vec2 t) { wCenter = wCenter + t; }
+};
+
+Camera2D camera;		//2D camera 
 GPUProgram gpuProgram; // vertex and fragment shaders
 unsigned int vao;	   // virtual world on the GPU
 
@@ -67,8 +84,6 @@ const int nv = 100;
 double k = 8.988 * (10 ^ 9); //Coulomb number
 double hidrogenWeigth = 1.00797; // g/Mol
 double electronCharge = -1.602176634; //* 10 ^ (-19)coulomb
-
-float moved = 0.1;
 
 // Initialization, create an OpenGL context
 void onInitialization() {
@@ -155,21 +170,12 @@ void onDisplay() {
 // Key of ASCII code pressed
 void onKeyboard(unsigned char key, int pX, int pY) {
 	switch (key) {
-		case 27: //esc
-			exit(0);
-			break;
-		case 32: //space
-			glutPostRedisplay();
-			break;
-		case 83: //s
-			moved += 0.1;
-			break;
-		case 68: //d
-			break;
-		case 88: //x
-			break;
-		case 69: //e
-			break;
+		case 27:  exit(0);				   break; //esc
+		case 32:  glutPostRedisplay();	   break; //space
+		case 's': camera.Pan(vec2(-1, 0)); break;
+		case 'd': camera.Pan(vec2(1, 0));  break;
+		case 'x': camera.Pan(vec2(0, -1)); break;
+		case 'e': camera.Pan(vec2(0, 1));  break;
 	}
 }
 
@@ -208,7 +214,6 @@ void onMouse(int button, int state, int pX, int pY) { // pX, pY are the pixel co
 void onIdle() {
 	long time = glutGet(GLUT_ELAPSED_TIME); // elapsed time since the start of the program
 }
-
 
 
 float columbForce(int q1, int q2, float r) {
