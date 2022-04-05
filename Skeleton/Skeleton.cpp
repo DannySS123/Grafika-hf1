@@ -60,10 +60,12 @@ const char * const fragmentSource = R"(
 )";
 
 //CONSTANTS
-const int nv = 100;
-double k = 8.988 * (10 ^ 9); //Coulomb number
-double hidrogenWeigth = 1.00797; // g/Mol
-double electronCharge = -1.602176634; //* 10 ^ (-19)coulomb
+const int nv = 100; //circel pieces
+const int numOflinePoints = 200; 
+const double k = 8.988e9; //Coulomb number
+const double hidrogenWeigth = 1.00797; // g/Mol
+const double electronCharge = -1.602176634e-19; //* 10 ^ (-19)coulomb
+const double eps0 = 8.854187817e-12;
 
 class Camera2D {
 	vec2 wCenter;	//center in world coordinates
@@ -88,7 +90,7 @@ GPUProgram gpuProgram; // vertex and fragment shaders
 class Atom {
 	vec2 pos, vel;
 	vec3 color;
-	float weigth;
+	float weigth, charge;
 
 	unsigned int vao;
 	float sx, sy;
@@ -98,13 +100,13 @@ class Atom {
 public:
 	Atom() { Animate(vec2(0, 0), 0.0); }
 
-	void create(vec2 t, vec3 c, float s) {
+	void create(vec2 t, vec3 c, float s, float ch) {
 		wTranslate = t;		
 		pos = t;
 		color = c;
 		sx = s;
 		sy = s;
-
+		charge = ch;
 
 		glGenVertexArrays(1, &vao);	// get 1 vao id
 		glBindVertexArray(vao);		// make it active
@@ -137,9 +139,13 @@ public:
 		return pos;
 	}
 
+	float getCharge() {
+		return charge;
+	}
+
 	void Animate(vec2 t, float fi) {
-		sx = 10;
-		sy = 10;
+		//sx = 10;
+		//sy = 10;
 		wTranslate = t;
 		phi = fi;
 	}
@@ -200,11 +206,15 @@ public:
 		glGenBuffers(1, &vbo);	// Generate 1 buffer
 		glBindBuffer(GL_ARRAY_BUFFER, vbo);
 		// Geometry with 24 bytes (6 floats or 3 x 2 coordinates)
-		vec2 vertices[2];
+		vec2 vertices[numOflinePoints];
 		vertices[0] = start;
-		vertices[1] = end;
+		for (int i = 1; i < numOflinePoints - 1; i++) {
+			vertices[i] = vec2(start + (i*(end-start)/numOflinePoints));			
+		}
+		vertices[numOflinePoints - 1] = end;
+
 		glBufferData(GL_ARRAY_BUFFER, 	// Copy to GPU target
-			sizeof(vec2) * 2,  // # bytes
+			sizeof(vec2) * numOflinePoints,  // # bytes
 			vertices,	      	// address
 			GL_STATIC_DRAW);	// we do not change later
 
@@ -257,13 +267,15 @@ public:
 		glUniform3f(location, color.x, color.y, color.z); // 3 floats
 
 		glBindVertexArray(vao);
-		glDrawArrays(GL_LINE_STRIP, 0, 2);
+		glDrawArrays(GL_LINE_STRIP, 0, numOflinePoints);
 	}
 };
 
 class Molekule {
 	Atom atoms[8];
+	Line lines[8];
 	int numOfatoms;
+	vec2 vel;
 
 public:
 	Molekule() { numOfatoms = 0; }
@@ -273,7 +285,8 @@ public:
 
 		numOfatoms = rand() % 7 + 2; //between 2 and 8
 		printf("\n\n**************\nNumber of atoms: %d\n", numOfatoms);
-
+		float firstX = rand() % 401 - 200;
+		float firstY = rand() % 401 - 200;
 		for (int i = 0; i < numOfatoms; ++i) {
 			Atom a;
 			
@@ -293,12 +306,26 @@ public:
 				(mult < 0) ? 0.2 + (-mult / 10) : 0,
 				0,
 				(mult > 0) ? 0.2 + (mult / 10) : 0);
-			float rx = rand() % 601 - 300;
-			float ry = rand() % 601 - 300;
-			vec2 pos = vec2(rx, ry);
-			float w = hidrogenWeigth * (rand() % 25 + 5);
-			a.create(pos, color, w);
+
+			vec2 pos;
+			if (i == 0) {
+				pos = vec2(firstX, firstY);
+			}
+			else {
+				float rx = rand() % 201 - 100;
+				float ry = rand() % 201 - 100;
+				pos = vec2(firstX + rx, firstY + ry);
+			}
+			
+			float w = hidrogenWeigth * (rand() % 20 + 5);
+
+			a.create(pos, color, w, charge);
 			atoms[i] = a;
+			if (i > 0) {
+				Line l;
+				l.create(atoms[rand() % i].getPos(), atoms[i].getPos(), vec3(1, 1, 1));
+				lines[i] = l;
+			}
 			printf("Atom %d: pos=(%f, %f)\n", i, pos.x, pos.y);
 			printf("charge: %f    weight: %f\n", charge, w);
 			printf("color: %.2f, %.2f, %.2f\n\n", color.x, color.y, color.z);
@@ -310,6 +337,9 @@ public:
 	void Draw() {
 		for (int i = 0; i < numOfatoms; ++i) {
 			atoms[i].Draw();
+			if (i != 0) {
+				lines[i].Draw();
+			}
 		}
 	}
 
@@ -318,19 +348,23 @@ public:
 			atoms[i].Animate(atoms[i].getPos(), t);
 		}
 	}
+
+	vec2 getVel() {
+		return vel;
+	}
 };
 
 
-Molekule m;
+Molekule m1, m2;
 Line l;
 
 // Initialization, create an OpenGL context
 void onInitialization() {
 	glViewport(0, 0, windowWidth, windowHeight);
 
-	m.create();
-	l.create(vec2(0,0), vec2(10,30), vec3(0,1,0));
-
+	m1.create();
+	m2.create();
+	//l.create(vec2(-200,-200), vec2(200,200), vec3(1,1,1));
 
 	// create program for the GPU
 	gpuProgram.create(vertexSource, fragmentSource, "outColor");
@@ -341,8 +375,9 @@ void onDisplay() {
 	glClearColor(128.0/255, 128.0/255, 128.0/255, 0);     // background color
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // clear frame buffer
 
-	m.Draw();
-	l.Draw();
+	m1.Draw();
+	m2.Draw();
+	//l.Draw();
 
 	glutSwapBuffers(); // exchange buffers for double buffering
 	/*
@@ -398,10 +433,10 @@ void onKeyboard(unsigned char key, int pX, int pY) {
 	switch (key) {
 		case 27:  exit(0);				   break; //esc
 		case 32:  onInitialization();	   break; //space
-		case 's': camera.Pan(vec2(-1, 0)); break;
-		case 'd': camera.Pan(vec2(1, 0));  break;
-		case 'x': camera.Pan(vec2(0, -1)); break;
-		case 'e': camera.Pan(vec2(0, 1));  break;
+		case 'd': camera.Pan(vec2(-0.1, 0)); break;
+		case 's': camera.Pan(vec2(0.1, 0));  break;
+		case 'e': camera.Pan(vec2(0, -0.1)); break;
+		case 'x': camera.Pan(vec2(0, 0.1));  break;
 		case 'z': camera.Zoom(1.1);		   break;
 		case 'u': camera.Zoom(0.9);		   break;
 	}
@@ -443,11 +478,22 @@ void onMouse(int button, int state, int pX, int pY) { // pX, pY are the pixel co
 void onIdle() {
 	long time = glutGet(GLUT_ELAPSED_TIME); // elapsed time since the start of the program
 	float tenthOfsec = time / 10.0f;
-	m.Animate(tenthOfsec);
+	m1.Animate(tenthOfsec);
+	m2.Animate(tenthOfsec);
 	glutPostRedisplay();
 }
 
-
-float columbForce(int q1, int q2, float r) {
-	return k * q1 * q2 / r / r;
+float distance(Atom a1, Atom a2) {
+	vec2 r = a1.getPos() - a2.getPos();
+	return sqrt(r.x * r.x + r.y * r.y);
 }
+
+vec2 columbForce2D(Atom a1, Atom a2) {
+	vec2 ev = (a1.getPos() - a2.getPos())/distance(a1 ,a2);
+	return ev*a1.getCharge()*a2.getCharge()/2/M_PI;
+}
+
+vec2 drag(Molekule m) {
+	return -5*m.getVel();
+}
+
