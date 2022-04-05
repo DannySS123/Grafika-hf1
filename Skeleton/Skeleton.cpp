@@ -59,6 +59,12 @@ const char * const fragmentSource = R"(
 	}
 )";
 
+//CONSTANTS
+const int nv = 100;
+double k = 8.988 * (10 ^ 9); //Coulomb number
+double hidrogenWeigth = 1.00797; // g/Mol
+double electronCharge = -1.602176634; //* 10 ^ (-19)coulomb
+
 class Camera2D {
 	vec2 wCenter;	//center in world coordinates
 	vec2 wSize;		//width and height in world coordinates
@@ -77,49 +83,172 @@ public:
 
 Camera2D camera;		//2D camera 
 GPUProgram gpuProgram; // vertex and fragment shaders
-unsigned int vao;	   // virtual world on the GPU
+//unsigned int vao;	   // virtual world on the GPU
 
-//CONSTANTS
-const int nv = 100;
-double k = 8.988 * (10 ^ 9); //Coulomb number
-double hidrogenWeigth = 1.00797; // g/Mol
-double electronCharge = -1.602176634; //* 10 ^ (-19)coulomb
+class Atom {
+	vec2 pos, vel;
+	vec3 color;
 
+	unsigned int vao;
+	float sx, sy;
+	vec2 wTranslate;
+	float phi;
+
+public:
+	Atom() { Animate(vec2(0, 0), 0.0); }
+
+	void create(vec2 t, vec3 c) {
+		wTranslate = t;		
+		pos = t;
+		color = c;
+
+		glGenVertexArrays(1, &vao);	// get 1 vao id
+		glBindVertexArray(vao);		// make it active
+
+		unsigned int vbo;		// vertex buffer object
+		glGenBuffers(1, &vbo);	// Generate 1 buffer
+		glBindBuffer(GL_ARRAY_BUFFER, vbo);
+		// Geometry with 24 bytes (6 floats or 3 x 2 coordinates)
+		vec2 vertices[nv];
+		for (int i = 0; i < nv; i++) {
+			float fi = i * 2 * M_PI / nv;
+			vertices[i] = vec2(cos(fi), sin(fi));
+		}
+		glBufferData(GL_ARRAY_BUFFER, 	// Copy to GPU target
+			sizeof(vec2) * nv,  // # bytes
+			vertices,	      	// address
+			GL_STATIC_DRAW);	// we do not change later
+
+		glEnableVertexAttribArray(0);  // AttribArray 0
+		glVertexAttribPointer(0,       // vbo -> AttribArray 0
+			2, GL_FLOAT, GL_FALSE, // two floats/attrib, not fixed-point
+			0, NULL); 		     // stride, offset: tightly packed
+
+		//STARTING POS
+		mat4 MVPTransform = M() * camera.V() * camera.P();
+		gpuProgram.setUniform(MVPTransform, "MVP");
+	}
+
+	void Animate(vec2 t, float fi) {
+		sx = 10;
+		sy = 10;
+		wTranslate = t;
+		phi = fi;
+	}
+
+	mat4 M() {
+		mat4 Mscale(
+			sx, 0,  0, 0,
+			0,  sy, 0, 0,
+			0,  0,  0, 0,
+			0,  0,  0, 1);
+		
+		mat4 Mrotate(
+			cosf(phi),	 sinf(phi), 0, 0,
+			-sinf(phi),	 cosf(phi), 0, 0,
+			0,			 0,			1, 0,
+			0,			 0,			0, 1);
+
+		mat4 Mtranslate(
+			1,			  0,			0, 0,
+			0,			  1,			0, 0,
+			0,			  0,			0, 0,
+			wTranslate.x, wTranslate.y, 0, 1);
+
+		return Mscale * Mrotate * Mtranslate;
+	}
+
+	void Draw() {
+		mat4 MVPTransform = M() * camera.V() * camera.P();
+		gpuProgram.setUniform(MVPTransform, "MVP");
+
+		//COLOR
+		int location = glGetUniformLocation(gpuProgram.getId(), "color");
+		glUniform3f(location, color.x, color.y, color.z); // 3 floats
+
+		glBindVertexArray(vao);
+		glDrawArrays(GL_TRIANGLE_FAN, 0, nv);
+	}
+};
+
+
+class Molekule {
+	Atom atoms[8];
+	int numOfatoms;
+
+public:
+	Molekule() { numOfatoms = 0; }
+
+	void create() {		
+		double chargeSum = 0;
+
+		numOfatoms = rand() % 7 + 2; //between 2 and 8
+		printf("\n\n**************\nNumber of atoms: %d\n", numOfatoms);
+
+		for (int i = 0; i < numOfatoms; ++i) {
+			Atom a;
+			
+			double charge = 0;
+			double mult = ((rand() % 10) + 1); //between 1 and 10
+			if (i + 1 != numOfatoms) {
+				
+				if ((rand() % 2) == 0) {
+					mult *= -1;
+				}
+				charge = electronCharge * mult;
+			}
+			else {
+				charge = -chargeSum;
+				mult = charge / electronCharge;
+			}
+			chargeSum += charge;
+			
+			vec3 color = vec3(
+				(mult < 0) ? 0.2 + (-mult / 10) : 0,
+				0,
+				(mult > 0) ? 0.2 + (mult / 10) : 0);
+			float rx = rand() % 601 - 300;
+			float ry = rand() % 601 - 300;
+			vec2 pos = vec2(rx, ry);
+
+			a.create(pos, color);
+			atoms[i] = a;
+			printf("Atom %d: pos=(%f, %f)\n", i, pos.x, pos.y);
+			printf("charge: %f\n", charge);
+			printf("color: %f, %f, %f\n\n", color.x, color.y, color.z);
+		}
+
+		printf("Charge sum = %f", chargeSum);
+	}
+
+	void Draw() {
+		for (int i = 0; i < numOfatoms; ++i) {
+			atoms[i].Draw();
+		}
+	}
+};
+
+
+Molekule m;
 // Initialization, create an OpenGL context
 void onInitialization() {
 	glViewport(0, 0, windowWidth, windowHeight);
 
-	glGenVertexArrays(1, &vao);	// get 1 vao id
-	glBindVertexArray(vao);		// make it active
-
-	unsigned int vbo;		// vertex buffer object
-	glGenBuffers(1, &vbo);	// Generate 1 buffer
-	glBindBuffer(GL_ARRAY_BUFFER, vbo);
-	// Geometry with 24 bytes (6 floats or 3 x 2 coordinates)
-	vec2 vertices[nv];
-	for (int i = 0; i < nv; i++) {
-		float fi = i * 2 * M_PI / nv;
-		vertices[i] = vec2(cos(fi), sin(fi));
-	}
-	glBufferData(GL_ARRAY_BUFFER, 	// Copy to GPU target
-		sizeof(vec2) * nv,  // # bytes
-		vertices,	      	// address
-		GL_STATIC_DRAW);	// we do not change later
-
-	glEnableVertexAttribArray(0);  // AttribArray 0
-	glVertexAttribPointer(0,       // vbo -> AttribArray 0
-		2, GL_FLOAT, GL_FALSE, // two floats/attrib, not fixed-point
-		0, NULL); 		     // stride, offset: tightly packed
-
+	m.create();
+	
 	// create program for the GPU
 	gpuProgram.create(vertexSource, fragmentSource, "outColor");
 }
 
 // Window has become invalid: Redraw
 void onDisplay() {
-	glClearColor(0, 0, 0, 0);     // background color
-	glClear(GL_COLOR_BUFFER_BIT); // clear frame buffer
+	glClearColor(128.0/255, 128.0/255, 128.0/255, 0);     // background color
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // clear frame buffer
 
+	m.Draw();
+
+	glutSwapBuffers(); // exchange buffers for double buffering
+	/*
 	int numberOfMolecules = 2;
 	for (int i = 0; i < numberOfMolecules; ++i) {
 		double chargeSum = 0;
@@ -156,14 +285,14 @@ void onDisplay() {
 			glUniformMatrix4fv(location, 1, GL_TRUE, &MVPtransf[0][0]);	// Load a 4x4 row-major float matrix to the specified location
 
 			glBindVertexArray(vao);  // Draw call
-			glDrawArrays(GL_TRIANGLE_FAN, 0 /*startIdx*/, nv /*# Elements*/);
+			glDrawArrays(GL_TRIANGLE_FAN, 0 startIdx, nv # Elements);
 		}
 		if (chargeSum != 0) {
 			printf("ajajj");
 		}
 	}
+	*/
 
-	glutSwapBuffers(); // exchange buffers for double buffering
 }
 
 
@@ -171,12 +300,15 @@ void onDisplay() {
 void onKeyboard(unsigned char key, int pX, int pY) {
 	switch (key) {
 		case 27:  exit(0);				   break; //esc
-		case 32:  glutPostRedisplay();	   break; //space
+		case 32:  onInitialization();	   break; //space
 		case 's': camera.Pan(vec2(-1, 0)); break;
 		case 'd': camera.Pan(vec2(1, 0));  break;
 		case 'x': camera.Pan(vec2(0, -1)); break;
 		case 'e': camera.Pan(vec2(0, 1));  break;
+		case 'z': camera.Zoom(1.1);		   break;
+		case 'u': camera.Zoom(0.9);		   break;
 	}
+	glutPostRedisplay();
 }
 
 // Key of ASCII code released
