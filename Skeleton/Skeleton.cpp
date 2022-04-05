@@ -88,6 +88,7 @@ GPUProgram gpuProgram; // vertex and fragment shaders
 class Atom {
 	vec2 pos, vel;
 	vec3 color;
+	float weigth;
 
 	unsigned int vao;
 	float sx, sy;
@@ -97,10 +98,13 @@ class Atom {
 public:
 	Atom() { Animate(vec2(0, 0), 0.0); }
 
-	void create(vec2 t, vec3 c) {
+	void create(vec2 t, vec3 c, float s) {
 		wTranslate = t;		
 		pos = t;
 		color = c;
+		sx = s;
+		sy = s;
+
 
 		glGenVertexArrays(1, &vao);	// get 1 vao id
 		glBindVertexArray(vao);		// make it active
@@ -127,6 +131,10 @@ public:
 		//STARTING POS
 		mat4 MVPTransform = M() * camera.V() * camera.P();
 		gpuProgram.setUniform(MVPTransform, "MVP");
+	}
+
+	vec2 getPos() {
+		return pos;
 	}
 
 	void Animate(vec2 t, float fi) {
@@ -171,6 +179,87 @@ public:
 	}
 };
 
+class Line {
+	vec2 start, end;
+	vec3 color;
+
+	unsigned int vao;
+	float sx, sy;
+	vec2 wTranslate;
+	float phi;
+
+public:
+	Line() { Animate(vec2(0, 0), 0.0); }
+
+	void create(vec2 start, vec2 end, vec3 c) {
+		color = c;
+		glGenVertexArrays(1, &vao);	// get 1 vao id
+		glBindVertexArray(vao);		// make it active
+
+		unsigned int vbo;		// vertex buffer object
+		glGenBuffers(1, &vbo);	// Generate 1 buffer
+		glBindBuffer(GL_ARRAY_BUFFER, vbo);
+		// Geometry with 24 bytes (6 floats or 3 x 2 coordinates)
+		vec2 vertices[2];
+		vertices[0] = start;
+		vertices[1] = end;
+		glBufferData(GL_ARRAY_BUFFER, 	// Copy to GPU target
+			sizeof(vec2) * 2,  // # bytes
+			vertices,	      	// address
+			GL_STATIC_DRAW);	// we do not change later
+
+		glEnableVertexAttribArray(0);  // AttribArray 0
+		glVertexAttribPointer(0,       // vbo -> AttribArray 0
+			2, GL_FLOAT, GL_FALSE, // two floats/attrib, not fixed-point
+			0, NULL); 		     // stride, offset: tightly packed
+
+		//STARTING POS
+		mat4 MVPTransform = M() * camera.V() * camera.P();
+		gpuProgram.setUniform(MVPTransform, "MVP");
+	}
+
+
+	void Animate(vec2 t, float fi) {
+		sx = 1;
+		sy = 1;
+		wTranslate = t;
+		phi = fi;
+	}
+
+	mat4 M() {
+		mat4 Mscale(
+			sx, 0, 0, 0,
+			0, sy, 0, 0,
+			0, 0, 0, 0,
+			0, 0, 0, 1);
+
+		mat4 Mrotate(
+			cosf(phi), sinf(phi), 0, 0,
+			-sinf(phi), cosf(phi), 0, 0,
+			0, 0, 1, 0,
+			0, 0, 0, 1);
+
+		mat4 Mtranslate(
+			1, 0, 0, 0,
+			0, 1, 0, 0,
+			0, 0, 0, 0,
+			wTranslate.x, wTranslate.y, 0, 1);
+
+		return Mscale * Mrotate * Mtranslate;
+	}
+
+	void Draw() {
+		mat4 MVPTransform = M() * camera.V() * camera.P();
+		gpuProgram.setUniform(MVPTransform, "MVP");
+
+		//COLOR
+		int location = glGetUniformLocation(gpuProgram.getId(), "color");
+		glUniform3f(location, color.x, color.y, color.z); // 3 floats
+
+		glBindVertexArray(vao);
+		glDrawArrays(GL_LINE_STRIP, 0, 2);
+	}
+};
 
 class Molekule {
 	Atom atoms[8];
@@ -191,10 +280,7 @@ public:
 			double charge = 0;
 			double mult = ((rand() % 10) + 1); //between 1 and 10
 			if (i + 1 != numOfatoms) {
-				
-				if ((rand() % 2) == 0) {
-					mult *= -1;
-				}
+				mult *= ((rand() % 2) == 0) ? 1 : -1;
 				charge = electronCharge * mult;
 			}
 			else {
@@ -210,12 +296,12 @@ public:
 			float rx = rand() % 601 - 300;
 			float ry = rand() % 601 - 300;
 			vec2 pos = vec2(rx, ry);
-
-			a.create(pos, color);
+			float w = hidrogenWeigth * (rand() % 25 + 5);
+			a.create(pos, color, w);
 			atoms[i] = a;
 			printf("Atom %d: pos=(%f, %f)\n", i, pos.x, pos.y);
-			printf("charge: %f\n", charge);
-			printf("color: %f, %f, %f\n\n", color.x, color.y, color.z);
+			printf("charge: %f    weight: %f\n", charge, w);
+			printf("color: %.2f, %.2f, %.2f\n\n", color.x, color.y, color.z);
 		}
 
 		printf("Charge sum = %f", chargeSum);
@@ -226,16 +312,26 @@ public:
 			atoms[i].Draw();
 		}
 	}
+
+	void Animate(float t) {
+		for (int i = 0; i < numOfatoms; ++i) {
+			atoms[i].Animate(atoms[i].getPos(), t);
+		}
+	}
 };
 
 
 Molekule m;
+Line l;
+
 // Initialization, create an OpenGL context
 void onInitialization() {
 	glViewport(0, 0, windowWidth, windowHeight);
 
 	m.create();
-	
+	l.create(vec2(0,0), vec2(10,30), vec3(0,1,0));
+
+
 	// create program for the GPU
 	gpuProgram.create(vertexSource, fragmentSource, "outColor");
 }
@@ -246,6 +342,7 @@ void onDisplay() {
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // clear frame buffer
 
 	m.Draw();
+	l.Draw();
 
 	glutSwapBuffers(); // exchange buffers for double buffering
 	/*
@@ -345,6 +442,9 @@ void onMouse(int button, int state, int pX, int pY) { // pX, pY are the pixel co
 // Idle event indicating that some time elapsed: do animation here
 void onIdle() {
 	long time = glutGet(GLUT_ELAPSED_TIME); // elapsed time since the start of the program
+	float tenthOfsec = time / 10.0f;
+	m.Animate(tenthOfsec);
+	glutPostRedisplay();
 }
 
 
