@@ -64,7 +64,7 @@ const int nv = 100; //circel pieces
 const int numOflinePoints = 200; 
 const double k = 8.988e9; //Coulomb number
 const double hidrogenWeigth = 1.00797; // g/Mol
-const double electronCharge = -1.602176634e-19; //* 10 ^ (-19)coulomb
+const double electronCharge = -1.602176634;//e-19; //* 10 ^ (-19)coulomb
 const double eps0 = 8.854187817e-12;
 
 class Camera2D {
@@ -87,10 +87,11 @@ Camera2D camera;		//2D camera
 GPUProgram gpuProgram; // vertex and fragment shaders
 //unsigned int vao;	   // virtual world on the GPU
 
+
 class Atom {
 	vec2 pos, vel;
 	vec3 color;
-	float weigth, charge;
+	float charge, r;
 
 	unsigned int vao;
 	float sx, sy;
@@ -106,6 +107,7 @@ public:
 		color = c;
 		sx = s;
 		sy = s;
+		r = s;
 		charge = ch;
 
 		glGenVertexArrays(1, &vao);	// get 1 vao id
@@ -137,6 +139,10 @@ public:
 
 	vec2 getPos() {
 		return pos;
+	}
+
+	float getR() {
+		return r;
 	}
 
 	float getCharge() {
@@ -271,24 +277,34 @@ public:
 	}
 };
 
+float distance(vec2 a1, vec2 a2) {
+	vec2 r = a1 - a2;
+	return sqrt(r.x * r.x + r.y * r.y);
+}
+
+
 class Molekule {
 	Atom atoms[8];
 	Line lines[8];
 	int numOfatoms;
 	vec2 vel;
+	float sumOfMass;
 
 public:
-	Molekule() { numOfatoms = 0; }
+	Molekule() { 
+		numOfatoms = 0; 
+	}
 
 	void create() {		
 		double chargeSum = 0;
+		sumOfMass = 0;
 
 		numOfatoms = rand() % 7 + 2; //between 2 and 8
 		printf("\n\n**************\nNumber of atoms: %d\n", numOfatoms);
 		float firstX = rand() % 401 - 200;
 		float firstY = rand() % 401 - 200;
 		for (int i = 0; i < numOfatoms; ++i) {
-			Atom a;
+			Atom newAtom;
 			
 			double charge = 0;
 			double mult = ((rand() % 10) + 1); //between 1 and 10
@@ -307,31 +323,55 @@ public:
 				0,
 				(mult > 0) ? 0.2 + (mult / 10) : 0);
 
+
+			bool badPos = true;
+
 			vec2 pos;
-			if (i == 0) {
-				pos = vec2(firstX, firstY);
-			}
-			else {
-				float rx = rand() % 201 - 100;
-				float ry = rand() % 201 - 100;
-				pos = vec2(firstX + rx, firstY + ry);
+			float r = hidrogenWeigth * (rand() % 20 + 5);
+
+			while (badPos) {
+				badPos = false;
+				if (i == 0) {
+					pos = vec2(firstX, firstY);
+				}
+				else {
+					float rx = rand() % 201 - 100;
+					float ry = rand() % 201 - 100;
+					pos = vec2(firstX + rx, firstY + ry);
+				}
+
+				//check if one atom overlaps with another
+				for (int j = 0; j < i; j++) {
+					if (distance(atoms[j].getPos(), pos) < atoms[j].getR() + r) {
+						badPos = true;
+						j = i;
+					}
+				}
 			}
 			
-			float w = hidrogenWeigth * (rand() % 20 + 5);
-
-			a.create(pos, color, w, charge);
-			atoms[i] = a;
+			sumOfMass += r;
+			newAtom.create(pos, color, r, charge);
+			atoms[i] = newAtom;
 			if (i > 0) {
 				Line l;
-				l.create(atoms[rand() % i].getPos(), atoms[i].getPos(), vec3(1, 1, 1));
+				int closest = 0;
+				float minDist = 1200;
+				for (int j = 0; j < i; j++) {
+					float dist = distance(atoms[j].getPos(), pos);
+					if (dist < minDist) {
+						closest = j;
+						minDist = dist;
+					}
+				}
+				l.create(atoms[closest].getPos(), atoms[i].getPos(), vec3(1, 1, 1));
 				lines[i] = l;
 			}
 			printf("Atom %d: pos=(%f, %f)\n", i, pos.x, pos.y);
-			printf("charge: %f    weight: %f\n", charge, w);
+			printf("charge: %f    weight: %f\n", charge, r);
 			printf("color: %.2f, %.2f, %.2f\n\n", color.x, color.y, color.z);
 		}
 
-		printf("Charge sum = %f", chargeSum);
+		printf("Charge sum = %f\n", chargeSum);
 	}
 
 	void Draw() {
@@ -346,25 +386,43 @@ public:
 	void Animate(float t) {
 		for (int i = 0; i < numOfatoms; ++i) {
 			atoms[i].Animate(atoms[i].getPos(), t);
+			if (i != 0) {
+				lines[i].Animate(0,0);
+			}
 		}
 	}
 
 	vec2 getVel() {
 		return vel;
 	}
+
+	int getNumOfAtoms() {
+		return numOfatoms;
+	}
+
+	Atom* getAtoms() {
+		return atoms;
+	}
+
+	float getMass() {
+		return sumOfMass;
+	}
 };
 
+vec2 centerOfMass(Molekule m);
 
 Molekule m1, m2;
 Line l;
+Atom a;
 
 // Initialization, create an OpenGL context
 void onInitialization() {
 	glViewport(0, 0, windowWidth, windowHeight);
 
 	m1.create();
-	m2.create();
-	//l.create(vec2(-200,-200), vec2(200,200), vec3(1,1,1));
+	//m2.create();
+	a.create(centerOfMass(m1), vec3(0, 1, 0), 10, -1);
+	//l.create(vec2(0,0), vec2(100,0), vec3(1,1,1));
 
 	// create program for the GPU
 	gpuProgram.create(vertexSource, fragmentSource, "outColor");
@@ -376,7 +434,8 @@ void onDisplay() {
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // clear frame buffer
 
 	m1.Draw();
-	m2.Draw();
+	//m2.Draw();
+	a.Draw();
 	//l.Draw();
 
 	glutSwapBuffers(); // exchange buffers for double buffering
@@ -477,19 +536,32 @@ void onMouse(int button, int state, int pX, int pY) { // pX, pY are the pixel co
 // Idle event indicating that some time elapsed: do animation here
 void onIdle() {
 	long time = glutGet(GLUT_ELAPSED_TIME); // elapsed time since the start of the program
-	float tenthOfsec = time / 10.0f;
-	m1.Animate(tenthOfsec);
-	m2.Animate(tenthOfsec);
+	float T = time / 10.0f;
+	printf("T: %f \n", T);
+	m1.Animate(T);
+	m2.Animate(T);
+
+	
+	float dt = 0.01;
+	for (int t = 0; t < T; t += dt) { // onIdle
+		float r, v, a, omega, theta;
+		for (int i = 0; i < m1.getNumOfAtoms(); i++) {
+			float m = m1.getAtoms()->getR();
+			float sumF = 0;
+			float sumM = 0;
+			v += sumF / m * dt;
+			r += v * dt;
+			omega += sumM / theta * dt;
+			a += omega * dt;
+		}
+	}
+
+
 	glutPostRedisplay();
 }
 
-float distance(Atom a1, Atom a2) {
-	vec2 r = a1.getPos() - a2.getPos();
-	return sqrt(r.x * r.x + r.y * r.y);
-}
-
 vec2 columbForce2D(Atom a1, Atom a2) {
-	vec2 ev = (a1.getPos() - a2.getPos())/distance(a1 ,a2);
+	vec2 ev = (a1.getPos() - a2.getPos())/distance(a1.getPos(), a2.getPos());
 	return ev*a1.getCharge()*a2.getCharge()/2/M_PI;
 }
 
@@ -497,3 +569,14 @@ vec2 drag(Molekule m) {
 	return -5*m.getVel();
 }
 
+vec2 centerOfMass(Molekule m) {
+	Atom* atoms = m.getAtoms();
+	vec2 sum = vec2(0,0);
+	for (int i = 0; i < m.getNumOfAtoms(); i++) {
+		Atom a = atoms[i];
+		sum = sum  + (a.getPos() * a.getR());
+	}
+	sum = sum / m.getMass();
+	printf("sum: %f %f\n", sum.x, sum.y);
+	return sum;
+}
