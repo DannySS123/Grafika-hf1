@@ -40,9 +40,12 @@ const char * const vertexSource = R"(
 
 	uniform mat4 MVP;			// uniform variable, the Model-View-Projection transformation matrix
 	layout(location = 0) in vec2 vp;	// Varying input: vp = vertex position is expected in attrib array 0
-
+		
 	void main() {
-		gl_Position = vec4(vp.x, vp.y, 0, 1) * MVP;		// transform vp from modeling space to normalized device space
+		vec4 cp =  vec4(vp.x, vp.y, 0, 1) * MVP;
+		float w = sqrt(cp.x * cp.x + cp.y * cp.y + 1);
+		float t = 1/(w+1);
+		gl_Position = vec4(t*cp.x, t*cp.y, 0, 1);		// transform vp from modeling space to normalized device space
 	}
 )";
 
@@ -61,10 +64,10 @@ const char * const fragmentSource = R"(
 
 //CONSTANTS
 const int nv = 100; //circel pieces
-const int numOflinePoints = 200; 
+const int numOflinePoints = 100; 
 const double k = 8.988e9; //Coulomb number
 const double hidrogenWeigth = 1.00797; // g/Mol
-const double electronCharge = -1.602176634;//e-19; //* 10 ^ (-19)coulomb
+const double electronCharge = -1.602176634e-19;//e-19; //* 10 ^ (-19)coulomb
 const double eps0 = 8.854187817e-12;
 
 class Camera2D {
@@ -87,6 +90,9 @@ Camera2D camera;		//2D camera
 GPUProgram gpuProgram; // vertex and fragment shaders
 //unsigned int vao;	   // virtual world on the GPU
 
+float hiperbolicW(float x, float y) {
+	return sqrt(x * x + y * y + 1);
+}
 
 class Atom {
 	vec2 pos, vel;
@@ -124,7 +130,7 @@ public:
 		}
 		glBufferData(GL_ARRAY_BUFFER, 	// Copy to GPU target
 			sizeof(vec2) * nv,  // # bytes
-			vertices,	      	// address
+			&vertices,	      	// address
 			GL_STATIC_DRAW);	// we do not change later
 
 		glEnableVertexAttribArray(0);  // AttribArray 0
@@ -160,7 +166,7 @@ public:
 		mat4 Mscale(
 			sx, 0,  0, 0,
 			0,  sy, 0, 0,
-			0,  0,  0, 0,
+			0,  0,  1, 0,
 			0,  0,  0, 1);
 		
 		mat4 Mrotate(
@@ -172,8 +178,8 @@ public:
 		mat4 Mtranslate(
 			1,			  0,			0, 0,
 			0,			  1,			0, 0,
-			0,			  0,			0, 0,
-			wTranslate.x, wTranslate.y, 0, 1);
+			0,			  0,			1, 0,
+			wTranslate.x, wTranslate.y,	0, 1);
 
 		return Mscale * Mrotate * Mtranslate;
 	}
@@ -221,8 +227,8 @@ public:
 
 		glBufferData(GL_ARRAY_BUFFER, 	// Copy to GPU target
 			sizeof(vec2) * numOflinePoints,  // # bytes
-			vertices,	      	// address
-			GL_STATIC_DRAW);	// we do not change later
+			&vertices,	      	// address
+			GL_DYNAMIC_DRAW);	// we do not change later
 
 		glEnableVertexAttribArray(0);  // AttribArray 0
 		glVertexAttribPointer(0,       // vbo -> AttribArray 0
@@ -231,7 +237,9 @@ public:
 
 		//STARTING POS
 		mat4 MVPTransform = M() * camera.V() * camera.P();
+		printf("KEZD************************************************************\n");
 		gpuProgram.setUniform(MVPTransform, "MVP");
+		printf("VEG************************************************************\n");
 	}
 
 
@@ -278,31 +286,31 @@ public:
 };
 
 float distance(vec2 a1, vec2 a2) {
-	vec2 r = a1 - a2;
-	return sqrt(r.x * r.x + r.y * r.y);
+	return length(a1 - a2);
 }
-
 
 class Molekule {
 	Atom atoms[8];
 	Line lines[8];
 	int numOfatoms;
-	vec2 vel;
+	vec2 vel, center;
 	float sumOfMass;
+	vec2 rVec[8];
 
 public:
 	Molekule() { 
 		numOfatoms = 0; 
+		sumOfMass = 0;
 	}
 
-	void create() {		
+	void create()  {		
 		double chargeSum = 0;
 		sumOfMass = 0;
 
 		numOfatoms = rand() % 7 + 2; //between 2 and 8
 		printf("\n\n**************\nNumber of atoms: %d\n", numOfatoms);
-		float firstX = rand() % 401 - 200;
-		float firstY = rand() % 401 - 200;
+		float firstX = rand() % 601 - 300;
+		float firstY = rand() % 601 - 300;
 		for (int i = 0; i < numOfatoms; ++i) {
 			Atom newAtom;
 			
@@ -370,6 +378,11 @@ public:
 			printf("charge: %f    weight: %f\n", charge, r);
 			printf("color: %.2f, %.2f, %.2f\n\n", color.x, color.y, color.z);
 		}
+		center = centerOfMass();
+
+		for (int i = 0; i < numOfatoms; i++) {
+			rVec[i] = atoms[i].getPos() - center;
+		}
 
 		printf("Charge sum = %f\n", chargeSum);
 	}
@@ -407,9 +420,22 @@ public:
 	float getMass() {
 		return sumOfMass;
 	}
-};
 
-vec2 centerOfMass(Molekule m);
+	vec2 getCenter() {
+		return center;
+	}
+
+	vec2 centerOfMass() {
+		vec2 res = vec2(0, 0);
+		for (int i = 0; i < numOfatoms; i++) {
+			Atom a = atoms[i];
+			res = res + (a.getPos() * a.getR());
+		}
+		res = res / sumOfMass;
+		//printf("sum: %f %f\n", sum.x, sum.y);
+		return res;
+	}
+};
 
 Molekule m1, m2;
 Line l;
@@ -421,7 +447,7 @@ void onInitialization() {
 
 	m1.create();
 	//m2.create();
-	a.create(centerOfMass(m1), vec3(0, 1, 0), 10, -1);
+	a.create(m1.getCenter(), vec3(0, 1, 0), 10, -1);
 	//l.create(vec2(0,0), vec2(100,0), vec3(1,1,1));
 
 	// create program for the GPU
@@ -486,7 +512,6 @@ void onDisplay() {
 
 }
 
-
 // Key of ASCII code pressed
 void onKeyboard(unsigned char key, int pX, int pY) {
 	switch (key) {
@@ -536,47 +561,38 @@ void onMouse(int button, int state, int pX, int pY) { // pX, pY are the pixel co
 // Idle event indicating that some time elapsed: do animation here
 void onIdle() {
 	long time = glutGet(GLUT_ELAPSED_TIME); // elapsed time since the start of the program
-	float T = time / 10.0f;
-	printf("T: %f \n", T);
-	m1.Animate(T);
-	m2.Animate(T);
+	float T = 10.0 * time / 1000.0;
+	//printf("T: %f \n", T);
 
-	
-	float dt = 0.01;
+	float dt = time/100;
 	for (int t = 0; t < T; t += dt) { // onIdle
-		float r, v, a, omega, theta;
-		for (int i = 0; i < m1.getNumOfAtoms(); i++) {
+		float a, omega, theta;
+		vec2 v, r;
+		for (int i = 0; i < m1.getNumOfAtoms(); i++) { //egy molekula összes atomján végigmegyünk
 			float m = m1.getAtoms()->getR();
-			float sumF = 0;
+			vec2 sumF = 0;
+			// M->  = r-> x F->
 			float sumM = 0;
-			v += sumF / m * dt;
-			r += v * dt;
+			v = v + (sumF / m * dt);
+			r = r + (v * dt);
 			omega += sumM / theta * dt;
 			a += omega * dt;
 		}
 	}
 
+	//m1.Animate(T);
+
+
+	//m2.Animate(T);
 
 	glutPostRedisplay();
 }
 
 vec2 columbForce2D(Atom a1, Atom a2) {
-	vec2 ev = (a1.getPos() - a2.getPos())/distance(a1.getPos(), a2.getPos());
-	return ev*a1.getCharge()*a2.getCharge()/2/M_PI;
+	vec2 ev = normalize(a1.getPos() - a2.getPos());
+	return ev*a1.getCharge()*a2.getCharge()/(2*M_PI*eps0*distance(a1.getPos(), a2.getPos()));
 }
 
 vec2 drag(Molekule m) {
 	return -5*m.getVel();
-}
-
-vec2 centerOfMass(Molekule m) {
-	Atom* atoms = m.getAtoms();
-	vec2 sum = vec2(0,0);
-	for (int i = 0; i < m.getNumOfAtoms(); i++) {
-		Atom a = atoms[i];
-		sum = sum  + (a.getPos() * a.getR());
-	}
-	sum = sum / m.getMass();
-	printf("sum: %f %f\n", sum.x, sum.y);
-	return sum;
 }
