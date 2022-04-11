@@ -67,8 +67,8 @@ const int nv = 100; //circel pieces
 const int numOflinePoints = 100; 
 const double k = 8.988e9; //Coulomb number
 const double hidrogenWeigth = 1.00797; // g/Mol
-const double electronCharge = -1.602176634e-19;//e-19; //* 10 ^ (-19)coulomb
-const double eps0 = 8.854187817e-12;
+const double electronCharge = -1.602176634;//e-19;//e-19; //* 10 ^ (-19)coulomb
+const double eps0 = 8.854187817;//e-12;
 
 class Camera2D {
 	vec2 wCenter;	//center in world coordinates
@@ -95,7 +95,7 @@ float hiperbolicW(float x, float y) {
 }
 
 class Atom {
-	vec2 pos, vel;
+	vec2 pos, vel, mol_center;
 	vec3 color;
 	float charge, r;
 
@@ -108,7 +108,7 @@ public:
 	Atom() { Animate(vec2(0, 0), 0.0); }
 
 	void create(vec2 t, vec3 c, float s, float ch) {
-		wTranslate = t;		
+		//wTranslate = t;		
 		pos = t;
 		color = c;
 		sx = s;
@@ -155,11 +155,15 @@ public:
 		return charge;
 	}
 
-	void Animate(vec2 t, float fi) {
+	void setMolCenter(vec2 c) {
+		mol_center = c;
+	}
+
+	void Animate(vec2 r, float omega) {
 		//sx = 10;
 		//sy = 10;
-		wTranslate = t;
-		phi = fi;
+		wTranslate = wTranslate + r;
+		phi = omega;
 	}
 
 	mat4 M() {
@@ -168,6 +172,12 @@ public:
 			0,  sy, 0, 0,
 			0,  0,  1, 0,
 			0,  0,  0, 1);
+
+		mat4 MtranslateBefor(
+			1, 0, 0, 0,
+			0, 1, 0, 0,
+			0, 0, 0, 0,
+			pos.x - mol_center.x, pos.y - mol_center.y, 0, 1);
 		
 		mat4 Mrotate(
 			cosf(phi),	 sinf(phi), 0, 0,
@@ -179,9 +189,9 @@ public:
 			1,			  0,			0, 0,
 			0,			  1,			0, 0,
 			0,			  0,			1, 0,
-			wTranslate.x, wTranslate.y,	0, 1);
+			mol_center.x + wTranslate.x, mol_center.y + wTranslate.y,	0, 1);
 
-		return Mscale * Mrotate * Mtranslate;
+		return Mscale * MtranslateBefor * Mrotate * Mtranslate;
 	}
 
 	void Draw() {
@@ -198,7 +208,7 @@ public:
 };
 
 class Line {
-	vec2 start, end;
+	vec2 start, end, middle, mol_center;
 	vec3 color;
 
 	unsigned int vao;
@@ -211,6 +221,7 @@ public:
 
 	void create(vec2 start, vec2 end, vec3 c) {
 		color = c;
+		middle = start + ((end - start) / 2);
 		glGenVertexArrays(1, &vao);	// get 1 vao id
 		glBindVertexArray(vao);		// make it active
 
@@ -243,11 +254,11 @@ public:
 	}
 
 
-	void Animate(vec2 t, float fi) {
+	void Animate(vec2 r, float omega) {
 		sx = 1;
 		sy = 1;
-		wTranslate = t;
-		phi = fi;
+		wTranslate = wTranslate + r;
+		phi = omega;
 	}
 
 	mat4 M() {
@@ -256,6 +267,12 @@ public:
 			0, sy, 0, 0,
 			0, 0, 0, 0,
 			0, 0, 0, 1);
+
+		mat4 MtranslateBefor(
+			1, 0, 0, 0,
+			0, 1, 0, 0,
+			0, 0, 0, 0,
+			-mol_center.x, -mol_center.y, 0, 1);
 
 		mat4 Mrotate(
 			cosf(phi), sinf(phi), 0, 0,
@@ -267,9 +284,9 @@ public:
 			1, 0, 0, 0,
 			0, 1, 0, 0,
 			0, 0, 0, 0,
-			wTranslate.x, wTranslate.y, 0, 1);
+			mol_center.x + wTranslate.x, mol_center.y + wTranslate.y, 0, 1);
 
-		return Mscale * Mrotate * Mtranslate;
+		return Mscale * MtranslateBefor * Mrotate * Mtranslate;
 	}
 
 	void Draw() {
@@ -282,6 +299,10 @@ public:
 
 		glBindVertexArray(vao);
 		glDrawArrays(GL_LINE_STRIP, 0, numOflinePoints);
+	}
+
+	void setMolCenter(vec2 c) {
+		mol_center = c;
 	}
 };
 
@@ -382,6 +403,11 @@ public:
 
 		for (int i = 0; i < numOfatoms; i++) {
 			rVec[i] = atoms[i].getPos() - center;
+			atoms[i].setMolCenter(center);
+		}
+
+		for (int i = 1; i < numOfatoms; i++) {
+			lines[i].setMolCenter(center);
 		}
 
 		printf("Charge sum = %f\n", chargeSum);
@@ -396,11 +422,11 @@ public:
 		}
 	}
 
-	void Animate(float t) {
+	void Animate(vec2 r, float omega) {
 		for (int i = 0; i < numOfatoms; ++i) {
-			atoms[i].Animate(atoms[i].getPos(), t);
+			atoms[i].Animate(r, omega);
 			if (i != 0) {
-				lines[i].Animate(0,0);
+				lines[i].Animate(r, omega);
 			}
 		}
 	}
@@ -446,7 +472,7 @@ void onInitialization() {
 	glViewport(0, 0, windowWidth, windowHeight);
 
 	m1.create();
-	//m2.create();
+	m2.create();
 	a.create(m1.getCenter(), vec3(0, 1, 0), 10, -1);
 	//l.create(vec2(0,0), vec2(100,0), vec3(1,1,1));
 
@@ -460,7 +486,7 @@ void onDisplay() {
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // clear frame buffer
 
 	m1.Draw();
-	//m2.Draw();
+	m2.Draw();
 	a.Draw();
 	//l.Draw();
 
@@ -558,40 +584,71 @@ void onMouse(int button, int state, int pX, int pY) { // pX, pY are the pixel co
 	}
 }
 
+vec2 columbForce2D(Atom a1, Atom a2) {
+	vec2 ev = normalize(a1.getPos() - a2.getPos());
+	return ev * a1.getCharge() * a2.getCharge() / (2 * M_PI * eps0 * distance(a1.getPos(), a2.getPos()));
+}
+
+int prevTime = 0;
 // Idle event indicating that some time elapsed: do animation here
 void onIdle() {
 	long time = glutGet(GLUT_ELAPSED_TIME); // elapsed time since the start of the program
-	float T = 10.0 * time / 1000.0;
-	//printf("T: %f \n", T);
-
-	float dt = time/100;
-	for (int t = 0; t < T; t += dt) { // onIdle
-		float a, omega, theta;
-		vec2 v, r;
+	
+	
+	float T = (time - prevTime)/100.0;
+	prevTime = time;
+	//printf("***********************T: %f \n", T);
+	Atom* m1_atoms = m1.getAtoms();
+	Atom* m2_atoms = m2.getAtoms();
+	float theta = 0;
+	vec2 omega = 0;
+	vec2 v = vec2(0, 0);
+	vec2 r = vec2(0, 0);
+	vec2 a;
+	float dt = 0.01;
+	for (float t = 0; t < T; t += dt) { // onIdle
+		//printf("for, %f\n", t);
+		
+		
 		for (int i = 0; i < m1.getNumOfAtoms(); i++) { //egy molekula összes atomján végigmegyünk
-			float m = m1.getAtoms()->getR();
+			float m = m1_atoms[i].getR();
+			
 			vec2 sumF = 0;
-			// M->  = r-> x F->
-			float sumM = 0;
+			vec2 sumM = 0;
+			for (int j = 0; j < m2.getNumOfAtoms(); j++) {
+				theta = m * length(m1.getCenter()) * length(m1.getCenter());
+				
+				vec2 cf = columbForce2D(m1_atoms[i], m2_atoms[j]);
+				vec2 cent = m1.getCenter();
+				float alpha = acos(dot(cent, cf)/(length(cent)*length(cf)));
+				
+				float alphaPart = alpha - floor(alpha);
+				alpha = (int)alpha % 90 + alphaPart;
+				sumF = sumF + sin((double)alpha) * cf;
+				
+				sumM = sumM + cos(alpha) * cf;
+			}
+			
 			v = v + (sumF / m * dt);
+			
 			r = r + (v * dt);
-			omega += sumM / theta * dt;
-			a += omega * dt;
+			//printf("r: %f\n", r.x);
+			omega = omega + (sumM / theta * dt);
+			a = a + (omega * dt);
 		}
+		
 	}
 
-	//m1.Animate(T);
+	
+	m1.Animate(0, time/1000.0);
+	m2.Animate(0, time/1000.0);
 
-
-	//m2.Animate(T);
+	//m2.Animate(T, 10);
 
 	glutPostRedisplay();
 }
 
-vec2 columbForce2D(Atom a1, Atom a2) {
-	vec2 ev = normalize(a1.getPos() - a2.getPos());
-	return ev*a1.getCharge()*a2.getCharge()/(2*M_PI*eps0*distance(a1.getPos(), a2.getPos()));
-}
+
 
 vec2 drag(Molekule m) {
 	return -5*m.getVel();
