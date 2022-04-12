@@ -65,7 +65,7 @@ const char * const fragmentSource = R"(
 //CONSTANTS
 const int nv = 100; //circel pieces
 const int numOflinePoints = 100; 
-const double k = 8.988e9; //Coulomb number
+//const double k = 8.988e9; //Coulomb number
 const double hidrogenWeigth = 1.00797; // g/Mol
 const double electronCharge = -1.602176634;//e-19;//e-19; //* 10 ^ (-19)coulomb
 const double eps0 = 8.854187817;//e-12;
@@ -101,8 +101,8 @@ class Atom {
 
 	unsigned int vao;
 	float sx, sy;
-	vec2 wTranslate;
-	float phi;
+	vec2 wTranslate = vec2(0,0);
+	float phi = 0;
 
 public:
 	Atom() { Animate(vec2(0, 0), 0.0); }
@@ -162,8 +162,10 @@ public:
 	void Animate(vec2 r, float omega) {
 		//sx = 10;
 		//sy = 10;
+		
 		wTranslate = wTranslate + r;
-		phi = omega;
+		pos = pos + r;
+		phi += omega;
 	}
 
 	mat4 M() {
@@ -213,8 +215,8 @@ class Line {
 
 	unsigned int vao;
 	float sx, sy;
-	vec2 wTranslate;
-	float phi;
+	vec2 wTranslate = vec2(0,0);
+	float phi = 0;;
 
 public:
 	Line() { Animate(vec2(0, 0), 0.0); }
@@ -258,7 +260,9 @@ public:
 		sx = 1;
 		sy = 1;
 		wTranslate = wTranslate + r;
-		phi = omega;
+		//start = start + r;
+		//end = end + r;
+		phi += omega;
 	}
 
 	mat4 M() {
@@ -311,14 +315,17 @@ float distance(vec2 a1, vec2 a2) {
 }
 
 class Molekule {
+public:
 	Atom atoms[8];
 	Line lines[8];
 	int numOfatoms;
 	vec2 vel, center;
 	float sumOfMass;
 	vec2 rVec[8];
+	vec3 sumM;
+	vec2 sumF;
 
-public:
+
 	Molekule() { 
 		numOfatoms = 0; 
 		sumOfMass = 0;
@@ -428,27 +435,11 @@ public:
 			if (i != 0) {
 				lines[i].Animate(r, omega);
 			}
+		} //TODO
+		center = centerOfMass();
+		for (int i = 0; i < numOfatoms; ++i) {
+			rVec[i] = atoms[i].getPos() - center;
 		}
-	}
-
-	vec2 getVel() {
-		return vel;
-	}
-
-	int getNumOfAtoms() {
-		return numOfatoms;
-	}
-
-	Atom* getAtoms() {
-		return atoms;
-	}
-
-	float getMass() {
-		return sumOfMass;
-	}
-
-	vec2 getCenter() {
-		return center;
 	}
 
 	vec2 centerOfMass() {
@@ -473,7 +464,7 @@ void onInitialization() {
 
 	m1.create();
 	m2.create();
-	a.create(m1.getCenter(), vec3(0, 1, 0), 10, -1);
+	a.create(m1.center, vec3(0, 1, 0), 10, -1);
 	//l.create(vec2(0,0), vec2(100,0), vec3(1,1,1));
 
 	// create program for the GPU
@@ -589,61 +580,57 @@ vec2 columbForce2D(Atom a1, Atom a2) {
 	return ev * a1.getCharge() * a2.getCharge() / (2 * M_PI * eps0 * distance(a1.getPos(), a2.getPos()));
 }
 
-int prevTime = 0;
 // Idle event indicating that some time elapsed: do animation here
 void onIdle() {
 	long time = glutGet(GLUT_ELAPSED_TIME); // elapsed time since the start of the program
-	
-	
-	float T = (time - prevTime)/100.0;
-	prevTime = time;
-	//printf("***********************T: %f \n", T);
-	Atom* m1_atoms = m1.getAtoms();
-	Atom* m2_atoms = m2.getAtoms();
-	float theta = 0;
-	vec2 omega = 0;
-	vec2 v = vec2(0, 0);
-	vec2 r = vec2(0, 0);
-	vec2 a;
 	float dt = 0.01;
-	for (float t = 0; t < T; t += dt) { // onIdle
-		//printf("for, %f\n", t);
+	float theta1 = 10;
+	float theta2 = 15;
+	float omega1 = 0;
+	float omega2 = 0;
+	vec2 v1 = vec2(0, 0);
+	vec2 v2 = vec2(0, 0);
+	vec2 r1 = vec2(0, 0);
+	vec2 r2 = vec2(0, 0);
+	float alpha1 = 0;
+	float alpha2 = 0;
+	m1.sumF = vec2(0, 0);
+	m1.sumM = vec3(0, 0, 0);
+	m2.sumF = vec2(0, 0);
+	m2.sumM = vec3(0, 0, 0);
+
+	for (int i = 0; i < m1.numOfatoms; i++) { //egy molekula összes atomján végigmegyünk
 		
-		
-		for (int i = 0; i < m1.getNumOfAtoms(); i++) { //egy molekula összes atomján végigmegyünk
-			float m = m1_atoms[i].getR();
+		for (int j = 0; j < m2.numOfatoms; j++) {
+			float m_1 = m1.atoms[i].getR();
+			vec2 cf1_2 = columbForce2D(m1.atoms[i], m2.atoms[j]);
+			m1.sumM = m1.sumM + cross(m1.rVec[i], cf1_2);
+			m1.sumF = m1.sumF + dot(m1.rVec[i], cf1_2) * normalize(m1.rVec[i]);
 			
-			vec2 sumF = 0;
-			vec2 sumM = 0;
-			for (int j = 0; j < m2.getNumOfAtoms(); j++) {
-				theta = m * length(m1.getCenter()) * length(m1.getCenter());
-				
-				vec2 cf = columbForce2D(m1_atoms[i], m2_atoms[j]);
-				vec2 cent = m1.getCenter();
-				float alpha = acos(dot(cent, cf)/(length(cent)*length(cf)));
-				
-				float alphaPart = alpha - floor(alpha);
-				alpha = (int)alpha % 90 + alphaPart;
-				sumF = sumF + sin((double)alpha) * cf;
-				
-				sumM = sumM + cos(alpha) * cf;
-			}
-			
-			v = v + (sumF / m * dt);
-			
-			r = r + (v * dt);
-			//printf("r: %f\n", r.x);
-			omega = omega + (sumM / theta * dt);
-			a = a + (omega * dt);
+			omega1 += (m1.sumM.z / theta1 * dt);
+			alpha1 += (omega1 * dt);
+			v1 = v1 + (m1.sumF / m_1 * dt);
+			r1 = r1 + (v1 * dt);
+
+			//**************************************
+			/*
+			float m_2 = m2.atoms[i].getR();
+			vec2 cf2_1 = columbForce2D(m1.atoms[j], m2.atoms[i]);
+			m2.sumM = m2.sumM + cross(m2.rVec[j], cf2_1);
+			m2.sumF = m2.sumF + dot(m2.rVec[j], cf2_1) * normalize(m2.rVec[j]);
+
+			omega2 += (m2.sumM.z / theta2 * dt);
+			alpha2 += (omega2 * dt);
+			v2 = v2 + (m2.sumF / m_2 * dt);
+			r2 = r2 + (v2 * dt);*/
+
 		}
-		
+
+
 	}
-
-	
-	m1.Animate(0, time/1000.0);
-	m2.Animate(0, time/1000.0);
-
-	//m2.Animate(T, 10);
+	printf("r: %f\n", r1.x);
+	//m1.Animate(r1, omega1);
+	//m2.Animate(r2, omega2);
 
 	glutPostRedisplay();
 }
@@ -651,5 +638,36 @@ void onIdle() {
 
 
 vec2 drag(Molekule m) {
-	return -5*m.getVel();
+	return -5*m.vel;
 }
+
+/*theta = m * length(m1.getCenter()) * length(m1.getCenter());
+			vec2 cf = columbForce2D(m1_atoms[i], m2_atoms[j]);
+			vecM = cross(m1.getRVec()[j], cf);
+			vec2 cent = m1.getCenter();
+			float alpha = acos(dot(cent, cf)/(length(cent)*length(cf)));
+				
+			float alphaPart = alpha - floor(alpha);
+			alpha = (int)alpha % 90 + alphaPart;
+			sumF = sumF + sin((double)alpha) * cf;	
+			sumM = sumM + cos(alpha) * cf;
+
+			//vec2 cent = m1.centerOfMass();
+			//vec2 rVec = m1_atoms[j].getPos() - cent;
+
+
+/*
+vec2 cf = columbForce2D(m1_atoms[i], m2_atoms[j]);
+sumM = sumM + cross(m1.getRVec()[j], cf);
+printf("r: %f\n", cross(m1.getRVec()[j], cf).z);
+
+vec2 cf = columbForce2D(m1_atoms[i], m2_atoms[j]);
+//printf("columb force : %f\n", cf.x);
+sumM = sumM + cross(m1.getRVec()[i], cf);
+//printf("sumM: %f", sumM.z);
+
+
+float alpha = acos(dot(m1.getCenter(), cf) / (length(m1.getCenter()) * length(cf)));
+float alphaPart = alpha - floor(alpha);
+alpha = (int)floor(alpha) % 90 + alphaPart;
+sumF = sumF + sin((double)alpha) * cf; */
