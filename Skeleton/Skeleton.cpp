@@ -65,13 +65,13 @@ const char * const fragmentSource = R"(
 //CONSTANTS
 const int nv = 100; //circel pieces
 const int numOflinePoints = 100; //line pirces
-const double hidrogenWeigth = 1.00797; // g/Mol
+const double hidrogenWeigth = 1.00797;
 const double electronCharge = -1.602176634;
 const double eps0 = 8.854187817;
 
 class Camera2D {
-	vec2 wCenter;	//center in world coordinates
-	vec2 wSize;		//width and height in world coordinates
+	vec2 wCenter;
+	vec2 wSize;
 public:
 	Camera2D() : wCenter(0, 0), wSize(600, 600) {}
 
@@ -85,8 +85,8 @@ public:
 	void Pan(vec2 t) { wCenter = wCenter + t; }
 };
 
-Camera2D camera;		//2D camera 
-GPUProgram gpuProgram; // vertex and fragment shaders
+Camera2D camera;
+GPUProgram gpuProgram;
 
 class Atom {
 	vec2 pos, vel, mol_center;
@@ -110,29 +110,28 @@ public:
 		r = s;
 		charge = ch;
 
-		glGenVertexArrays(1, &vao);	// get 1 vao id
-		glBindVertexArray(vao);		// make it active
+		glGenVertexArrays(1, &vao);
+		glBindVertexArray(vao);
 
-		unsigned int vbo;		// vertex buffer object
-		glGenBuffers(1, &vbo);	// Generate 1 buffer
+		unsigned int vbo;
+		glGenBuffers(1, &vbo);
 		glBindBuffer(GL_ARRAY_BUFFER, vbo);
-		// Geometry with 24 bytes (6 floats or 3 x 2 coordinates)
+
 		vec2 vertices[nv];
 		for (int i = 0; i < nv; i++) {
 			float fi = i * 2 * M_PI / nv;
 			vertices[i] = vec2(cos(fi), sin(fi));
 		}
-		glBufferData(GL_ARRAY_BUFFER, 	// Copy to GPU target
-			sizeof(vec2) * nv,  // # bytes
-			&vertices,	      	// address
-			GL_STATIC_DRAW);	// we do not change later
+		glBufferData(GL_ARRAY_BUFFER,
+			sizeof(vec2) * nv,
+			&vertices,
+			GL_STATIC_DRAW);
 
-		glEnableVertexAttribArray(0);  // AttribArray 0
-		glVertexAttribPointer(0,       // vbo -> AttribArray 0
-			2, GL_FLOAT, GL_FALSE, // two floats/attrib, not fixed-point
-			0, NULL); 		     // stride, offset: tightly packed
+		glEnableVertexAttribArray(0);
+		glVertexAttribPointer(0,
+			2, GL_FLOAT, GL_FALSE,
+			0, NULL);
 
-		//STARTING POS
 		mat4 MVPTransform = M() * camera.V() * camera.P();
 		gpuProgram.setUniform(MVPTransform, "MVP");
 	}
@@ -190,7 +189,6 @@ public:
 		mat4 MVPTransform = M() * camera.V() * camera.P();
 		gpuProgram.setUniform(MVPTransform, "MVP");
 
-		//COLOR
 		int location = glGetUniformLocation(gpuProgram.getId(), "color");
 		glUniform3f(location, color.x, color.y, color.z);
 
@@ -214,13 +212,13 @@ public:
 	void create(vec2 start, vec2 end, vec3 c) {
 		color = c;
 		middle = start + ((end - start) / 2);
-		glGenVertexArrays(1, &vao);	// get 1 vao id
-		glBindVertexArray(vao);		// make it active
+		glGenVertexArrays(1, &vao);
+		glBindVertexArray(vao);
 
-		unsigned int vbo;		// vertex buffer object
-		glGenBuffers(1, &vbo);	// Generate 1 buffer
+		unsigned int vbo;
+		glGenBuffers(1, &vbo);
 		glBindBuffer(GL_ARRAY_BUFFER, vbo);
-		// Geometry with 24 bytes (6 floats or 3 x 2 coordinates)
+
 		vec2 vertices[numOflinePoints];
 		vertices[0] = start;
 		for (int i = 1; i < numOflinePoints - 1; i++) {
@@ -228,21 +226,19 @@ public:
 		}
 		vertices[numOflinePoints - 1] = end;
 
-		glBufferData(GL_ARRAY_BUFFER, 	// Copy to GPU target
-			sizeof(vec2) * numOflinePoints,  // # bytes
-			&vertices,	      	// address
-			GL_DYNAMIC_DRAW);	// we do not change later
+		glBufferData(GL_ARRAY_BUFFER,
+			sizeof(vec2) * numOflinePoints,
+			&vertices,
+			GL_DYNAMIC_DRAW);
 
-		glEnableVertexAttribArray(0);  // AttribArray 0
-		glVertexAttribPointer(0,       // vbo -> AttribArray 0
-			2, GL_FLOAT, GL_FALSE, // two floats/attrib, not fixed-point
-			0, NULL); 		     // stride, offset: tightly packed
+		glEnableVertexAttribArray(0);
+		glVertexAttribPointer(0,
+			2, GL_FLOAT, GL_FALSE,
+			0, NULL);
 
-		//STARTING POS
 		mat4 MVPTransform = M() * camera.V() * camera.P();
 		gpuProgram.setUniform(MVPTransform, "MVP");
 	}
-
 
 	void Animate(vec2 r, float omega) {
 		sx = 1;
@@ -311,7 +307,6 @@ public:
 	vec3 sumM;
 	vec2 sumF;
 
-
 	Molekule() { 
 		numOfatoms = 0; 
 		sumOfMass = 0;
@@ -322,9 +317,7 @@ public:
 	void create()  {		
 		double chargeSum = 0;
 		sumOfMass = 0;
-
 		numOfatoms = rand() % 7 + 2;
-		printf("\n\n**************\nNumber of atoms: %d\n", numOfatoms);
 		float firstX = rand() % 601 - 300;
 		float firstY = rand() % 601 - 300;
 		for (int i = 0; i < numOfatoms; ++i) {
@@ -347,9 +340,7 @@ public:
 				0,
 				(mult > 0) ? 0.2 + (mult / 10) : 0);
 
-
 			bool badPos = true;
-
 			vec2 pos;
 			float r = hidrogenWeigth * (rand() % 20 + 5);
 
@@ -364,7 +355,6 @@ public:
 					pos = vec2(firstX + rx, firstY + ry);
 				}
 
-				//check if one atom overlaps with another
 				for (int j = 0; j < i; j++) {
 					if (distance(atoms[j].getPos(), pos) < atoms[j].getR() + r) {
 						badPos = true;
@@ -390,9 +380,6 @@ public:
 				l.create(atoms[closest].getPos(), atoms[i].getPos(), vec3(1, 1, 1));
 				lines[i] = l;
 			}
-			printf("Atom %d: pos=(%f, %f)\n", i, pos.x, pos.y);
-			printf("charge: %f    weight: %f\n", charge, r);
-			printf("color: %.2f, %.2f, %.2f\n\n", color.x, color.y, color.z);
 		}
 		center = centerOfMass();
 
@@ -450,29 +437,25 @@ Molekule m1, m2;
 Line l;
 Atom a;
 
-// Initialization, create an OpenGL context
 void onInitialization() {
 	glViewport(0, 0, windowWidth, windowHeight);
 
 	m1.create();
 	m2.create();
 
-	// create program for the GPU
 	gpuProgram.create(vertexSource, fragmentSource, "outColor");
 }
 
-// Window has become invalid: Redraw
 void onDisplay() {
-	glClearColor(128.0/255, 128.0/255, 128.0/255, 0);     // background color
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // clear frame buffer
+	glClearColor(128.0/255, 128.0/255, 128.0/255, 0);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 	m1.Draw();
 	m2.Draw();
 
-	glutSwapBuffers(); // exchange buffers for double buffering
+	glutSwapBuffers();
 }
 
-// Key of ASCII code pressed
 void onKeyboard(unsigned char key, int pX, int pY) {
 	switch (key) {
 		case 27:  exit(0);				   break; //esc
@@ -487,35 +470,13 @@ void onKeyboard(unsigned char key, int pX, int pY) {
 	glutPostRedisplay();
 }
 
-// Key of ASCII code released
 void onKeyboardUp(unsigned char key, int pX, int pY) {
 }
 
-// Move mouse with key pressed
-void onMouseMotion(int pX, int pY) {	// pX, pY are the pixel coordinates of the cursor in the coordinate system of the operation system
-	// Convert to normalized device space
-	float cX = 2.0f * pX / windowWidth - 1;	// flip y axis
-	float cY = 1.0f - 2.0f * pY / windowHeight;
-	printf("Mouse moved to (%3.2f, %3.2f)\n", cX, cY);
+void onMouseMotion(int pX, int pY) {
 }
 
-// Mouse click event
-void onMouse(int button, int state, int pX, int pY) { // pX, pY are the pixel coordinates of the cursor in the coordinate system of the operation system
-	// Convert to normalized device space
-	float cX = 2.0f * pX / windowWidth - 1;	// flip y axis
-	float cY = 1.0f - 2.0f * pY / windowHeight;
-
-	char * buttonStat;
-	switch (state) {
-	case GLUT_DOWN: buttonStat = "pressed"; break;
-	case GLUT_UP:   buttonStat = "released"; break;
-	}
-
-	switch (button) {
-	case GLUT_LEFT_BUTTON:   printf("Left button %s at (%3.2f, %3.2f)\n", buttonStat, cX, cY);   break;
-	case GLUT_MIDDLE_BUTTON: printf("Middle button %s at (%3.2f, %3.2f)\n", buttonStat, cX, cY); break;
-	case GLUT_RIGHT_BUTTON:  printf("Right button %s at (%3.2f, %3.2f)\n", buttonStat, cX, cY);  break;
-	}
+void onMouse(int button, int state, int pX, int pY) {
 }
 
 vec2 columbForce2D(Atom a1, Atom a2) {
@@ -523,9 +484,8 @@ vec2 columbForce2D(Atom a1, Atom a2) {
 	return ev * a1.getCharge() * a2.getCharge() / (2 * M_PI * eps0 * distance(a1.getPos(), a2.getPos()));
 }
 
-// Idle event indicating that some time elapsed: do animation here
 void onIdle() {
-	long time = glutGet(GLUT_ELAPSED_TIME); // elapsed time since the start of the program
+	long time = glutGet(GLUT_ELAPSED_TIME);
 	float dt = 0.01;
 	float omega1 = 0;
 	float omega2 = 0;
