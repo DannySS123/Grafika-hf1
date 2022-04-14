@@ -64,11 +64,10 @@ const char * const fragmentSource = R"(
 
 //CONSTANTS
 const int nv = 100; //circel pieces
-const int numOflinePoints = 100; 
-//const double k = 8.988e9; //Coulomb number
+const int numOflinePoints = 100; //line pirces
 const double hidrogenWeigth = 1.00797; // g/Mol
-const double electronCharge = -1.602176634;//e-19;//e-19; //* 10 ^ (-19)coulomb
-const double eps0 = 8.854187817;//e-12;
+const double electronCharge = -1.602176634;
+const double eps0 = 8.854187817;
 
 class Camera2D {
 	vec2 wCenter;	//center in world coordinates
@@ -88,11 +87,6 @@ public:
 
 Camera2D camera;		//2D camera 
 GPUProgram gpuProgram; // vertex and fragment shaders
-//unsigned int vao;	   // virtual world on the GPU
-
-float hiperbolicW(float x, float y) {
-	return sqrt(x * x + y * y + 1);
-}
 
 class Atom {
 	vec2 pos, vel, mol_center;
@@ -108,7 +102,7 @@ public:
 	Atom() { Animate(vec2(0, 0), 0.0); }
 
 	void create(vec2 t, vec3 c, float s, float ch) {
-		//wTranslate = t;		
+		wTranslate = 0;		
 		pos = t;
 		color = c;
 		sx = s;
@@ -144,7 +138,7 @@ public:
 	}
 
 	vec2 getPos() {
-		return pos;
+		return pos + wTranslate;
 	}
 
 	float getR() {
@@ -160,11 +154,7 @@ public:
 	}
 
 	void Animate(vec2 r, float omega) {
-		//sx = 10;
-		//sy = 10;
-		
 		wTranslate = wTranslate + r;
-		pos = pos + r;
 		phi += omega;
 	}
 
@@ -179,7 +169,7 @@ public:
 			1, 0, 0, 0,
 			0, 1, 0, 0,
 			0, 0, 0, 0,
-			pos.x - mol_center.x, pos.y - mol_center.y, 0, 1);
+			pos.x -mol_center.x, pos.y-mol_center.y, 0, 1);
 		
 		mat4 Mrotate(
 			cosf(phi),	 sinf(phi), 0, 0,
@@ -202,7 +192,7 @@ public:
 
 		//COLOR
 		int location = glGetUniformLocation(gpuProgram.getId(), "color");
-		glUniform3f(location, color.x, color.y, color.z); // 3 floats
+		glUniform3f(location, color.x, color.y, color.z);
 
 		glBindVertexArray(vao);
 		glDrawArrays(GL_TRIANGLE_FAN, 0, nv);
@@ -250,9 +240,7 @@ public:
 
 		//STARTING POS
 		mat4 MVPTransform = M() * camera.V() * camera.P();
-		printf("KEZD************************************************************\n");
 		gpuProgram.setUniform(MVPTransform, "MVP");
-		printf("VEG************************************************************\n");
 	}
 
 
@@ -260,8 +248,6 @@ public:
 		sx = 1;
 		sy = 1;
 		wTranslate = wTranslate + r;
-		//start = start + r;
-		//end = end + r;
 		phi += omega;
 	}
 
@@ -320,7 +306,7 @@ public:
 	Line lines[8];
 	int numOfatoms;
 	vec2 vel, center;
-	float sumOfMass;
+	float sumOfMass, omega, theta;
 	vec2 rVec[8];
 	vec3 sumM;
 	vec2 sumF;
@@ -329,13 +315,15 @@ public:
 	Molekule() { 
 		numOfatoms = 0; 
 		sumOfMass = 0;
+		omega = 0;
+		theta = 1;
 	}
 
 	void create()  {		
 		double chargeSum = 0;
 		sumOfMass = 0;
 
-		numOfatoms = rand() % 7 + 2; //between 2 and 8
+		numOfatoms = rand() % 7 + 2;
 		printf("\n\n**************\nNumber of atoms: %d\n", numOfatoms);
 		float firstX = rand() % 601 - 300;
 		float firstY = rand() % 601 - 300;
@@ -343,7 +331,7 @@ public:
 			Atom newAtom;
 			
 			double charge = 0;
-			double mult = ((rand() % 10) + 1); //between 1 and 10
+			double mult = ((rand() % 10) + 1);
 			if (i + 1 != numOfatoms) {
 				mult *= ((rand() % 2) == 0) ? 1 : -1;
 				charge = electronCharge * mult;
@@ -416,8 +404,6 @@ public:
 		for (int i = 1; i < numOfatoms; i++) {
 			lines[i].setMolCenter(center);
 		}
-
-		printf("Charge sum = %f\n", chargeSum);
 	}
 
 	void Draw() {
@@ -435,11 +421,18 @@ public:
 			if (i != 0) {
 				lines[i].Animate(r, omega);
 			}
-		} //TODO
+		}
 		center = centerOfMass();
+		theta = 0;
 		for (int i = 0; i < numOfatoms; ++i) {
 			rVec[i] = atoms[i].getPos() - center;
+			theta += atoms[i].getR() * length(rVec[i]) * length(rVec[i])/10000;
 		}
+		
+	}
+
+	vec2 drag() {
+		return -5 * vel;
 	}
 
 	vec2 centerOfMass() {
@@ -449,7 +442,6 @@ public:
 			res = res + (a.getPos() * a.getR());
 		}
 		res = res / sumOfMass;
-		//printf("sum: %f %f\n", sum.x, sum.y);
 		return res;
 	}
 };
@@ -464,8 +456,6 @@ void onInitialization() {
 
 	m1.create();
 	m2.create();
-	a.create(m1.center, vec3(0, 1, 0), 10, -1);
-	//l.create(vec2(0,0), vec2(100,0), vec3(1,1,1));
 
 	// create program for the GPU
 	gpuProgram.create(vertexSource, fragmentSource, "outColor");
@@ -478,55 +468,8 @@ void onDisplay() {
 
 	m1.Draw();
 	m2.Draw();
-	a.Draw();
-	//l.Draw();
 
 	glutSwapBuffers(); // exchange buffers for double buffering
-	/*
-	int numberOfMolecules = 2;
-	for (int i = 0; i < numberOfMolecules; ++i) {
-		double chargeSum = 0;
-
-		float rx = (rand() % 30) / 15.0 - 1;
-		float ry = (rand() % 30) / 15.0 - 1;
-		//printf("%f\n", rx);
-		int numberOfAtoms = rand() % 7 + 2; //between 2 and 8
-		for (int j = 0; j < numberOfAtoms; ++j) {
-
-			double mult = 0, charge = 0;
-			if (j + 1 != numberOfAtoms) {
-				mult = ((rand() % 10) + 1); //between 1 and 10
-				if ((rand() % 2) == 0) {
-					mult *= -1;
-				}
-				charge = electronCharge * mult;
-			}
-			else {
-				charge = -chargeSum;
-			}
-			chargeSum += charge;
-			
-			// Set color to (0, 1, 0) = green
-			int location = glGetUniformLocation(gpuProgram.getId(), "color");
-			glUniform3f(location,(mult < 0) ? (-mult/10) : 0, 0, (mult > 0) ? (mult / 10) : 0); // 3 floats
-
-			float MVPtransf[4][4] = { 0.1, 0, 0, 0,    // MVP matrix, 
-									  0, 0.1, 0, 0,    // row-major!
-									  0, 0, 1, 0,
-									  rx+j*0.2, ry, 0, 1 };
-
-			location = glGetUniformLocation(gpuProgram.getId(), "MVP");	// Get the GPU location of uniform variable MVP
-			glUniformMatrix4fv(location, 1, GL_TRUE, &MVPtransf[0][0]);	// Load a 4x4 row-major float matrix to the specified location
-
-			glBindVertexArray(vao);  // Draw call
-			glDrawArrays(GL_TRIANGLE_FAN, 0 startIdx, nv # Elements);
-		}
-		if (chargeSum != 0) {
-			printf("ajajj");
-		}
-	}
-	*/
-
 }
 
 // Key of ASCII code pressed
@@ -584,8 +527,6 @@ vec2 columbForce2D(Atom a1, Atom a2) {
 void onIdle() {
 	long time = glutGet(GLUT_ELAPSED_TIME); // elapsed time since the start of the program
 	float dt = 0.01;
-	float theta1 = 10;
-	float theta2 = 15;
 	float omega1 = 0;
 	float omega2 = 0;
 	vec2 v1 = vec2(0, 0);
@@ -594,80 +535,46 @@ void onIdle() {
 	vec2 r2 = vec2(0, 0);
 	float alpha1 = 0;
 	float alpha2 = 0;
-	m1.sumF = vec2(0, 0);
-	m1.sumM = vec3(0, 0, 0);
-	m2.sumF = vec2(0, 0);
-	m2.sumM = vec3(0, 0, 0);
 
-	for (int i = 0; i < m1.numOfatoms; i++) { //egy molekula összes atomján végigmegyünk
-		
-		for (int j = 0; j < m2.numOfatoms; j++) {
-			float m_1 = m1.atoms[i].getR();
-			vec2 cf1_2 = columbForce2D(m1.atoms[i], m2.atoms[j]);
+	for (int i = 0; i < m1.numOfatoms; i++) {
+		vec2 cf1_2 = vec2(0, 0);
+		m1.sumM = vec3(0, 0, 0);
+		m1.sumF = vec2(0, 0);
+		float m_1 = m1.atoms[i].getR();
+		for (int j = 0; j < m2.numOfatoms; j++) {	
+			cf1_2 =  15000*columbForce2D(m1.atoms[i], m2.atoms[j]);
 			m1.sumM = m1.sumM + cross(m1.rVec[i], cf1_2);
-			m1.sumF = m1.sumF + dot(m1.rVec[i], cf1_2) * normalize(m1.rVec[i]);
-			
-			omega1 += (m1.sumM.z / theta1 * dt);
-			alpha1 += (omega1 * dt);
-			v1 = v1 + (m1.sumF / m_1 * dt);
-			r1 = r1 + (v1 * dt);
+			m1.sumF = m1.sumF + dot(m1.rVec[i], cf1_2)*normalize(m1.rVec[i]);
+		}
+		omega1 += ((m1.sumM.z *0.01) / m1.theta * dt);
+		m1.omega = omega1;
+		alpha1 += (omega1 * dt);
+		v1 = v1 + ((m1.sumF - m1.vel) / m_1 * dt);
+		r1 = r1 + (v1 * dt);
+		m1.vel = v1;
+	}
 
-			//**************************************
-			/*
-			float m_2 = m2.atoms[i].getR();
-			vec2 cf2_1 = columbForce2D(m1.atoms[j], m2.atoms[i]);
-			m2.sumM = m2.sumM + cross(m2.rVec[j], cf2_1);
-			m2.sumF = m2.sumF + dot(m2.rVec[j], cf2_1) * normalize(m2.rVec[j]);
-
-			omega2 += (m2.sumM.z / theta2 * dt);
-			alpha2 += (omega2 * dt);
-			v2 = v2 + (m2.sumF / m_2 * dt);
-			r2 = r2 + (v2 * dt);*/
+	for (int i = 0; i < m2.numOfatoms; i++) {
+		vec2 cf2_1 = vec2(0, 0);
+		m2.sumM = vec3(0, 0, 0);
+		m2.sumF = vec2(0, 0);
+		float m_2 = m2.atoms[i].getR();
+		for (int j = 0; j < m1.numOfatoms; j++) {
+			vec2 cf2_1 = 15000*columbForce2D(m2.atoms[i], m1.atoms[j]);
+			m2.sumM = m2.sumM + cross(m2.rVec[i], cf2_1);
+			m2.sumF = m2.sumF + dot(m2.rVec[i], cf2_1) * normalize(m2.rVec[i]);
 
 		}
-
-
+		omega2 += ((m2.sumM.z * 0.01) / m2.theta * dt);
+		m2.omega = omega2;
+		alpha2 += (omega1 * dt);
+		v2 = v2 + ((m2.sumF - m2.vel) / m_2 * dt);
+		r2 = r2 + (v2 * dt);
+		m2.vel = v2;
 	}
-	printf("r: %f\n", r1.x);
-	//m1.Animate(r1, omega1);
-	//m2.Animate(r2, omega2);
+
+	m1.Animate(r1, alpha1);
+	m2.Animate(r2, alpha2);
 
 	glutPostRedisplay();
 }
-
-
-
-vec2 drag(Molekule m) {
-	return -5*m.vel;
-}
-
-/*theta = m * length(m1.getCenter()) * length(m1.getCenter());
-			vec2 cf = columbForce2D(m1_atoms[i], m2_atoms[j]);
-			vecM = cross(m1.getRVec()[j], cf);
-			vec2 cent = m1.getCenter();
-			float alpha = acos(dot(cent, cf)/(length(cent)*length(cf)));
-				
-			float alphaPart = alpha - floor(alpha);
-			alpha = (int)alpha % 90 + alphaPart;
-			sumF = sumF + sin((double)alpha) * cf;	
-			sumM = sumM + cos(alpha) * cf;
-
-			//vec2 cent = m1.centerOfMass();
-			//vec2 rVec = m1_atoms[j].getPos() - cent;
-
-
-/*
-vec2 cf = columbForce2D(m1_atoms[i], m2_atoms[j]);
-sumM = sumM + cross(m1.getRVec()[j], cf);
-printf("r: %f\n", cross(m1.getRVec()[j], cf).z);
-
-vec2 cf = columbForce2D(m1_atoms[i], m2_atoms[j]);
-//printf("columb force : %f\n", cf.x);
-sumM = sumM + cross(m1.getRVec()[i], cf);
-//printf("sumM: %f", sumM.z);
-
-
-float alpha = acos(dot(m1.getCenter(), cf) / (length(m1.getCenter()) * length(cf)));
-float alphaPart = alpha - floor(alpha);
-alpha = (int)floor(alpha) % 90 + alphaPart;
-sumF = sumF + sin((double)alpha) * cf; */
