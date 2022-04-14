@@ -132,8 +132,8 @@ public:
 			2, GL_FLOAT, GL_FALSE,
 			0, NULL);
 
-		mat4 MVPTransform = M() * camera.V() * camera.P();
-		gpuProgram.setUniform(MVPTransform, "MVP");
+		//mat4 MVPTransform = M() * camera.V() * camera.P();
+		//gpuProgram.setUniform(MVPTransform, "MVP");
 	}
 
 	vec2 getPos() {
@@ -236,8 +236,8 @@ public:
 			2, GL_FLOAT, GL_FALSE,
 			0, NULL);
 
-		mat4 MVPTransform = M() * camera.V() * camera.P();
-		gpuProgram.setUniform(MVPTransform, "MVP");
+		//mat4 MVPTransform = M() * camera.V() * camera.P();
+		//gpuProgram.setUniform(MVPTransform, "MVP");
 	}
 
 	void Animate(vec2 r, float omega) {
@@ -308,6 +308,7 @@ public:
 	vec2 sumF;
 
 	Molekule() { 
+		srand(2);
 		numOfatoms = 0; 
 		sumOfMass = 0;
 		omega = 0;
@@ -439,7 +440,7 @@ Atom a;
 
 void onInitialization() {
 	glViewport(0, 0, windowWidth, windowHeight);
-
+	
 	m1.create();
 	m2.create();
 
