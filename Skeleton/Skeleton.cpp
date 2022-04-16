@@ -131,9 +131,6 @@ public:
 		glVertexAttribPointer(0,
 			2, GL_FLOAT, GL_FALSE,
 			0, NULL);
-
-		//mat4 MVPTransform = M() * camera.V() * camera.P();
-		//gpuProgram.setUniform(MVPTransform, "MVP");
 	}
 
 	vec2 getPos() {
@@ -235,9 +232,6 @@ public:
 		glVertexAttribPointer(0,
 			2, GL_FLOAT, GL_FALSE,
 			0, NULL);
-
-		//mat4 MVPTransform = M() * camera.V() * camera.P();
-		//gpuProgram.setUniform(MVPTransform, "MVP");
 	}
 
 	void Animate(vec2 r, float omega) {
@@ -279,9 +273,8 @@ public:
 		mat4 MVPTransform = M() * camera.V() * camera.P();
 		gpuProgram.setUniform(MVPTransform, "MVP");
 
-		//COLOR
 		int location = glGetUniformLocation(gpuProgram.getId(), "color");
-		glUniform3f(location, color.x, color.y, color.z); // 3 floats
+		glUniform3f(location, color.x, color.y, color.z);
 
 		glBindVertexArray(vao);
 		glDrawArrays(GL_LINE_STRIP, 0, numOflinePoints);
@@ -308,7 +301,7 @@ public:
 	vec2 sumF;
 
 	Molekule() { 
-		srand(2);
+		srand(3);
 		numOfatoms = 0; 
 		sumOfMass = 0;
 		omega = 0;
@@ -319,8 +312,8 @@ public:
 		double chargeSum = 0;
 		sumOfMass = 0;
 		numOfatoms = rand() % 7 + 2;
-		float firstX = rand() % 601 - 300;
-		float firstY = rand() % 601 - 300;
+		float firstX = rand() % 501 - 250;
+		float firstY = rand() % 501 - 250;
 		for (int i = 0; i < numOfatoms; ++i) {
 			Atom newAtom;
 			
@@ -343,7 +336,7 @@ public:
 
 			bool badPos = true;
 			vec2 pos;
-			float r = hidrogenWeigth * (rand() % 20 + 5);
+			float r = hidrogenWeigth * (rand() % 25 + 10);
 
 			while (badPos) {
 				badPos = false;
@@ -351,8 +344,8 @@ public:
 					pos = vec2(firstX, firstY);
 				}
 				else {
-					float rx = rand() % 201 - 100;
-					float ry = rand() % 201 - 100;
+					float rx = rand() % 301 - 150;
+					float ry = rand() % 301 - 150;
 					pos = vec2(firstX + rx, firstY + ry);
 				}
 
@@ -419,8 +412,8 @@ public:
 		
 	}
 
-	vec2 drag() {
-		return -5 * vel;
+	float drag() {
+		return 0.00001 * length(vel);
 	}
 
 	vec2 centerOfMass() {
@@ -431,6 +424,37 @@ public:
 		}
 		res = res / sumOfMass;
 		return res;
+	}
+
+	vec2 columbForce2D(Atom a1, Atom a2) {
+		vec2 ev = normalize(a1.getPos() - a2.getPos());
+		return ev * a1.getCharge() * a2.getCharge() / (2 * M_PI * eps0 * distance(a1.getPos(), a2.getPos()));
+	}
+
+	void calcAnimate(Molekule m2) {
+		float dt = 0.01;
+		float omega1 = 0;
+		vec2 v1 = vec2(0, 0);
+		vec2 r1 = vec2(0, 0);
+		float alpha1 = 0;
+		for (int i = 0; i < numOfatoms; i++) {
+			vec2 cf1_2 = vec2(0, 0);
+			sumM = vec3(0, 0, 0);
+			sumF = vec2(0, 0);
+			float m_1 = atoms[i].getR();
+			for (int j = 0; j < m2.numOfatoms; j++) {
+				cf1_2 = 15000 * columbForce2D(atoms[i], m2.atoms[j]);
+				sumM = sumM + cross(rVec[i], cf1_2);
+				sumF = sumF + dot(rVec[i], cf1_2) * normalize(rVec[i]);
+			}
+			omega1 += ((sumM.z * 0.01 - drag()) / theta * dt);
+			omega = omega1;
+			alpha1 += (omega1 * dt);
+			v1 = v1 + ((sumF - vel) / m_1 * dt);
+			r1 = r1 + (v1 * dt);
+			vel = v1;
+		}
+		Animate(r1, alpha1);
 	}
 };
 
@@ -480,62 +504,9 @@ void onMouseMotion(int pX, int pY) {
 void onMouse(int button, int state, int pX, int pY) {
 }
 
-vec2 columbForce2D(Atom a1, Atom a2) {
-	vec2 ev = normalize(a1.getPos() - a2.getPos());
-	return ev * a1.getCharge() * a2.getCharge() / (2 * M_PI * eps0 * distance(a1.getPos(), a2.getPos()));
-}
-
 void onIdle() {
 	long time = glutGet(GLUT_ELAPSED_TIME);
-	float dt = 0.01;
-	float omega1 = 0;
-	float omega2 = 0;
-	vec2 v1 = vec2(0, 0);
-	vec2 v2 = vec2(0, 0);
-	vec2 r1 = vec2(0, 0);
-	vec2 r2 = vec2(0, 0);
-	float alpha1 = 0;
-	float alpha2 = 0;
-
-	for (int i = 0; i < m1.numOfatoms; i++) {
-		vec2 cf1_2 = vec2(0, 0);
-		m1.sumM = vec3(0, 0, 0);
-		m1.sumF = vec2(0, 0);
-		float m_1 = m1.atoms[i].getR();
-		for (int j = 0; j < m2.numOfatoms; j++) {	
-			cf1_2 =  15000*columbForce2D(m1.atoms[i], m2.atoms[j]);
-			m1.sumM = m1.sumM + cross(m1.rVec[i], cf1_2);
-			m1.sumF = m1.sumF + dot(m1.rVec[i], cf1_2)*normalize(m1.rVec[i]);
-		}
-		omega1 += ((m1.sumM.z *0.01) / m1.theta * dt);
-		m1.omega = omega1;
-		alpha1 += (omega1 * dt);
-		v1 = v1 + ((m1.sumF - m1.vel) / m_1 * dt);
-		r1 = r1 + (v1 * dt);
-		m1.vel = v1;
-	}
-
-	for (int i = 0; i < m2.numOfatoms; i++) {
-		vec2 cf2_1 = vec2(0, 0);
-		m2.sumM = vec3(0, 0, 0);
-		m2.sumF = vec2(0, 0);
-		float m_2 = m2.atoms[i].getR();
-		for (int j = 0; j < m1.numOfatoms; j++) {
-			vec2 cf2_1 = 15000*columbForce2D(m2.atoms[i], m1.atoms[j]);
-			m2.sumM = m2.sumM + cross(m2.rVec[i], cf2_1);
-			m2.sumF = m2.sumF + dot(m2.rVec[i], cf2_1) * normalize(m2.rVec[i]);
-
-		}
-		omega2 += ((m2.sumM.z * 0.01) / m2.theta * dt);
-		m2.omega = omega2;
-		alpha2 += (omega1 * dt);
-		v2 = v2 + ((m2.sumF - m2.vel) / m_2 * dt);
-		r2 = r2 + (v2 * dt);
-		m2.vel = v2;
-	}
-
-	m1.Animate(r1, alpha1);
-	m2.Animate(r2, alpha2);
-
+	m1.calcAnimate(m2);
+	m2.calcAnimate(m1);
 	glutPostRedisplay();
 }
