@@ -301,7 +301,7 @@ public:
 	vec2 sumF;
 
 	Molekule() { 
-		srand(3);
+		srand(6);
 		numOfatoms = 0; 
 		sumOfMass = 0;
 		omega = 0;
@@ -504,9 +504,14 @@ void onMouseMotion(int pX, int pY) {
 void onMouse(int button, int state, int pX, int pY) {
 }
 
+float prevTime = 0.0;
 void onIdle() {
 	long time = glutGet(GLUT_ELAPSED_TIME);
-	m1.calcAnimate(m2);
-	m2.calcAnimate(m1);
+	float timePassed = (time - prevTime)/1000;
+	for (float i = 0; i < timePassed; i += 0.01) {
+		m1.calcAnimate(m2);
+		m2.calcAnimate(m1);
+	}
+	prevTime = time;
 	glutPostRedisplay();
 }
